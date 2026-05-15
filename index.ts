@@ -33,7 +33,9 @@ const TinyFishSearchParams = Type.Object({
 		}),
 	),
 	language: Type.Optional(
-		Type.String({ description: "Language code for results, e.g. en, fr, de." }),
+		Type.String({
+			description: "Language code for results, e.g. en, fr, de.",
+		}),
 	),
 	page: Type.Optional(
 		Type.Number({
@@ -76,7 +78,9 @@ const TinyFishFetchParams = Type.Object({
 		}),
 	),
 	links: Type.Optional(
-		Type.Boolean({ description: "Include page hyperlinks in each result." }),
+		Type.Boolean({
+			description: "Include page hyperlinks in each result.",
+		}),
 	),
 	image_links: Type.Optional(
 		Type.Boolean({ description: "Include image URLs in each result." }),
@@ -108,6 +112,20 @@ type TruncationDetails = {
 	totalBytes: number;
 	outputLines: number;
 	outputBytes: number;
+};
+
+type TinyFishToolDetails = {
+	kind?: "search" | "fetch";
+	query?: string;
+	page?: number;
+	totalResults?: number;
+	returnedResults?: number;
+	urlCount?: number;
+	successful?: number;
+	errors?: unknown[];
+	error?: string;
+	truncation?: TruncationDetails;
+	phase?: "search" | "fetch";
 };
 
 function textResult(text: string, details: Record<string, unknown>) {
@@ -334,6 +352,101 @@ function renderSimpleCall(
 	);
 }
 
+function firstTextContent(result: {
+	content: Array<{ type: string; text?: string }>;
+}) {
+	return result.content.find((item) => item.type === "text")?.text ?? "";
+}
+
+function renderTinyFishResult(
+	result: {
+		content: Array<{ type: string; text?: string }>;
+		details?: unknown;
+	},
+	options: { expanded: boolean; isPartial: boolean },
+	theme: Parameters<
+		NonNullable<Parameters<ExtensionAPI["registerTool"]>[0]["renderResult"]>
+	>[2],
+) {
+	const details = (result.details ?? {}) as TinyFishToolDetails;
+	const text = firstTextContent(result);
+
+	if (options.isPartial || details.phase) {
+		return new Text(theme.fg("warning", text || "TinyFish working..."), 0, 0);
+	}
+
+	if (details.error || text.startsWith("Error:")) {
+		return new Text(
+			theme.fg(
+				"error",
+				text.split("\n")[0] || details.error || "TinyFish error",
+			),
+			0,
+			0,
+		);
+	}
+
+	const truncation = details.truncation;
+	const truncatedText = truncation?.truncated
+		? theme.fg(
+				"warning",
+				` [truncated: ${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}]`,
+			)
+		: "";
+
+	if (!options.expanded) {
+		if (details.kind === "search") {
+			const query = details.query ? ` for ${details.query}` : "";
+			return new Text(
+				theme.fg(
+					"success",
+					`${details.returnedResults ?? 0}/${details.totalResults ?? 0} results`,
+				) +
+					theme.fg("dim", query) +
+					truncatedText,
+				0,
+				0,
+			);
+		}
+
+		if (details.kind === "fetch") {
+			const errorCount = Array.isArray(details.errors)
+				? details.errors.length
+				: 0;
+			return new Text(
+				theme.fg(
+					errorCount > 0 ? "warning" : "success",
+					`${details.successful ?? 0}/${details.urlCount ?? 0} fetched`,
+				) +
+					(errorCount > 0
+						? theme.fg("warning", `, ${errorCount} errors`)
+						: "") +
+					truncatedText,
+				0,
+				0,
+			);
+		}
+
+		const lineCount = text ? text.split("\n").length : 0;
+		return new Text(
+			theme.fg("success", "done") +
+				(lineCount ? theme.fg("dim", ` (${lineCount} lines)`) : "") +
+				truncatedText,
+			0,
+			0,
+		);
+	}
+
+	return new Text(
+		text
+			.split("\n")
+			.map((line) => theme.fg("toolOutput", line))
+			.join("\n"),
+		0,
+		0,
+	);
+}
+
 export default function tinyfishExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "tinyfish_search",
@@ -367,7 +480,10 @@ export default function tinyfishExtension(pi: ExtensionAPI) {
 			);
 			onUpdate?.({
 				content: [
-					{ type: "text", text: `Searching TinyFish: ${request.query}` },
+					{
+						type: "text",
+						text: `Searching TinyFish: ${request.query}`,
+					},
 				],
 				details: { phase: "search", query: request.query },
 			});
@@ -405,6 +521,9 @@ export default function tinyfishExtension(pi: ExtensionAPI) {
 				(args as { query?: string }).query,
 				theme,
 			);
+		},
+		renderResult(result, options, theme) {
+			return renderTinyFishResult(result, options, theme);
 		},
 	});
 
@@ -492,6 +611,9 @@ export default function tinyfishExtension(pi: ExtensionAPI) {
 				params.url ?? params.urls?.join(" | "),
 				theme,
 			);
+		},
+		renderResult(result, options, theme) {
+			return renderTinyFishResult(result, options, theme);
 		},
 	});
 }
