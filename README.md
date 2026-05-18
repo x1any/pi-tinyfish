@@ -30,10 +30,10 @@ pi install git:github.com/x1any/pi-tinyfish
 ## Development
 
 ```bash
-bun install
-bun test
-bun run typecheck
-bun run check
+npm install
+npm test
+npm run typecheck
+npm run check
 ```
 
 ## Notes

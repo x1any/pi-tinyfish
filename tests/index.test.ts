@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import type { FetchResponse, SearchQueryResponse } from "@tiny-fish/sdk";
+import { describe, expect, test } from "vitest";
 import {
 	formatFetchResponse,
 	formatSearchResponse,
