@@ -7,7 +7,13 @@ Pi package that adds TinyFish Search and Fetch tools using `@tiny-fish/sdk`.
 - `tinyfish_search` — web search with ranked titles, snippets, and URLs.
 - `tinyfish_fetch` — render/fetch up to 10 URLs and return extracted content as `markdown`, `html`, or `json`.
 
-Both tools read the API key from the standard TinyFish environment variable:
+Save the API key from Pi:
+
+```text
+/tinyfish
+```
+
+The command stores it in `~/.pi/agent/tinyfish.json` with owner-only permissions. Alternatively, use the standard environment variable:
 
 ```bash
 export TINYFISH_API_KEY="your_api_key_here"

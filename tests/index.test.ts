@@ -4,10 +4,16 @@ import {
 	formatFetchResponse,
 	formatSearchResponse,
 	normalizeUrls,
+	parseTinyfishApiKey,
 	truncateToolText,
 } from "../index.ts";
 
 describe("pi-tinyfish helpers", () => {
+	test("parseTinyfishApiKey reads and trims saved key", () => {
+		expect(parseTinyfishApiKey('{"apiKey":" tf_test "}')).toBe("tf_test");
+		expect(parseTinyfishApiKey('{"apiKey":" "}')).toBeUndefined();
+	});
+
 	test("normalizeUrls trims, combines, and deduplicates url inputs", () => {
 		expect(
 			normalizeUrls({
