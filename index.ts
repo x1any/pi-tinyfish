@@ -1,9 +1,13 @@
+import { readFileSync } from "node:fs";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { type Static, StringEnum, Type } from "@earendil-works/pi-ai";
 import {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
 	type ExtensionAPI,
 	formatSize,
+	getAgentDir,
 	truncateHead,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
@@ -20,6 +24,7 @@ const FETCH_TIMEOUT_MS = 150_000;
 const MAX_TOOL_BYTES = 200_000;
 const MAX_FETCH_URLS = 10;
 const LINK_PREVIEW_LIMIT = 50;
+const TINYFISH_CONFIG_PATH = join(getAgentDir(), "tinyfish.json");
 
 const TinyFishSearchParams = Type.Object({
 	query: Type.String({
@@ -332,8 +337,21 @@ function fetchRequest(
 	return request;
 }
 
+export function parseTinyfishApiKey(config: string): string | undefined {
+	const value = JSON.parse(config) as { apiKey?: unknown };
+	return typeof value.apiKey === "string" && value.apiKey.trim()
+		? value.apiKey.trim()
+		: undefined;
+}
+
 function tinyfishClient(timeout: number): TinyFish {
-	return new TinyFish({ timeout });
+	let apiKey: string | undefined;
+	try {
+		apiKey = parseTinyfishApiKey(readFileSync(TINYFISH_CONFIG_PATH, "utf8"));
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+	}
+	return new TinyFish({ apiKey, timeout });
 }
 
 function renderSimpleCall(
@@ -448,11 +466,39 @@ function renderTinyFishResult(
 }
 
 export default function tinyfishExtension(pi: ExtensionAPI) {
+	pi.registerCommand("tinyfish", {
+		description: "Save TinyFish API key",
+		handler: async (_args, ctx) => {
+			if (!ctx.hasUI) {
+				ctx.ui.notify(
+					"TinyFish API key setup requires interactive mode.",
+					"error",
+				);
+				return;
+			}
+			const apiKey = (
+				await ctx.ui.input("TinyFish API key", "Paste API key")
+			)?.trim();
+			if (!apiKey) {
+				ctx.ui.notify("TinyFish API key not changed.", "info");
+				return;
+			}
+			await mkdir(getAgentDir(), { recursive: true });
+			await writeFile(
+				TINYFISH_CONFIG_PATH,
+				`${JSON.stringify({ apiKey }, null, 2)}\n`,
+				{ mode: 0o600 },
+			);
+			await chmod(TINYFISH_CONFIG_PATH, 0o600);
+			ctx.ui.notify("TinyFish API key saved.", "info");
+		},
+	});
+
 	pi.registerTool({
 		name: "tinyfish_search",
 		label: "TinyFish Search",
 		description:
-			"Search the web using the TinyFish Search API via @tiny-fish/sdk. Requires TINYFISH_API_KEY. Returns ranked titles, snippets, and URLs. Output is truncated to 50KB by default.",
+			"Search the web using the TinyFish Search API via @tiny-fish/sdk. Requires a key saved by /tinyfish or TINYFISH_API_KEY. Returns ranked titles, snippets, and URLs. Output is truncated to 50KB by default.",
 		promptSnippet:
 			"Search the web with TinyFish for ranked results, snippets, and URLs. Use location/language for geo-targeting.",
 		promptGuidelines: [
@@ -531,7 +577,7 @@ export default function tinyfishExtension(pi: ExtensionAPI) {
 		name: "tinyfish_fetch",
 		label: "TinyFish Fetch",
 		description:
-			"Fetch and extract clean content from up to 10 URLs using the TinyFish Fetch API via @tiny-fish/sdk. Requires TINYFISH_API_KEY. Use markdown by default; html/json are available. Output is truncated to 50KB by default. TinyFish recommends a 150s client timeout for fetch.",
+			"Fetch and extract clean content from up to 10 URLs using the TinyFish Fetch API via @tiny-fish/sdk. Requires a key saved by /tinyfish or TINYFISH_API_KEY. Use markdown by default; html/json are available. Output is truncated to 50KB by default. TinyFish recommends a 150s client timeout for fetch.",
 		promptSnippet:
 			"Fetch known URLs with TinyFish to get rendered/extracted page content as markdown, html, or json.",
 		promptGuidelines: [
